@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="mk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Македонски цркви и манастири — GPS + Google Maps</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#080705;color:#eee;font-family:Arial,sans-serif}
+header{padding:18px 12px;text-align:center;background:linear-gradient(145deg,#251607,#080705);border-bottom:1px solid #8b6a25}
+h1{margin:0 0 6px;color:#e8c86a;font-size:23px}.sub{color:#bbb;font-size:13px}
+.wrap{max-width:1200px;margin:auto;padding:10px}.controls{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin:10px 0}
+input,select,button{width:100%;padding:12px;border-radius:10px;border:1px solid #765b24;background:#15110c;color:#fff;font-size:14px}
+button{cursor:pointer}.gold{border-color:#c69b36;color:#f1d477}
+.actionsTop{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}
+#map{height:52vh;min-height:360px;border:1px solid #725823;border-radius:14px;overflow:hidden}
+.status{padding:9px 2px;color:#d7c58c;font-size:13px}.count{color:#e7c45d;font-weight:bold}
+.list{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px;margin-top:10px}
+.card{background:#11100d;border:1px solid #40351f;border-radius:13px;padding:13px}.name{font-size:17px;color:#f1d477;font-weight:bold;margin-bottom:7px}
+.meta,.gps{font-size:12px;color:#aaa;margin:4px 0}.gps{font-family:monospace;color:#d8d1bd}
+.cardActions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px}
+.cardActions a,.cardActions button,.modal a{display:block;text-align:center;text-decoration:none;padding:9px;border-radius:9px;border:1px solid #6d5627;background:#17120b;color:#f0d47b;font-size:12px}
+.empty{padding:25px;text-align:center;color:#aaa}.modal{display:none;position:fixed;inset:0;background:#000b;z-index:9999;padding:18px;align-items:center;justify-content:center}
+.modal.open{display:flex}.box{max-width:520px;width:100%;background:#11100d;border:1px solid #9a762c;border-radius:15px;padding:18px}
+.box h2{color:#e8c86a;margin-top:0}.modal a{margin-top:8px}.close{float:right;width:auto;padding:7px 10px}
+.note{font-size:11px;color:#999;margin-top:10px;line-height:1.4}
+@media(max-width:700px){.controls{grid-template-columns:1fr}.actionsTop{grid-template-columns:1fr 1fr}#map{height:48vh;min-height:320px}}
+</style>
+</head>
+<body>
+<header>
+<h1>⛪ Македонски цркви и манастири</h1>
+<div class="sub">Една HTML страница • GPS • Google Maps • OpenStreetMap</div>
+</header>
+<div class="wrap">
+<div class="controls">
+<input id="search" placeholder="🔎 Пребарај црква, манастир или место...">
+<select id="type"><option value="all">Сите објекти</option><option value="monastery">☦ Манастири</option><option value="church">✝ Цркви</option></select>
+<select id="region"><option value="all">Сите региони</option></select>
+</div>
+<div class="actionsTop">
+<button class="gold" onclick="showAll()">🗺 Сите на карта</button>
+<button onclick="useMyLocation()">📍 Моја локација</button>
+<button onclick="nearest()">🎯 Најблиски</button>
+<button onclick="resetFilters()">↺ Ресет</button>
+</div>
+<div class="status"><span id="count" class="count">145 записи</span> • <span id="status">Податоците се вградени директно во HTML — нема fetch/GIS зависност.</span></div>
+<div id="map"></div><div id="list" class="list"></div>
+<div class="note">GPS координатите се координати внесени во регистарот. За патување проверете ја точната позиција на Google Maps/OSM пред поаѓање.</div>
+</div>
+<div id="modal" class="modal" onclick="if(event.target===this)closeDetail()">
+<div class="box"><button class="close" onclick="closeDetail()">✕</button><div id="detail"></div></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const churchesData = [['Св. Богородица — Каменско',41.1774,20.6760,'Охрид','church'],['Св. Никола Болнички',41.1121,20.7987,'Охрид','church'],['Св. Богородица Болничка',41.1118,20.7981,'Охрид','church'],['Св. Јован Канео',41.1120,20.7889,'Охрид','church'],['Св. Софија',41.1128,20.7974,'Охрид','church'],['Св. Климент и Пантелејмон — Плаошник',41.1127361,20.7912444,'Охрид','monastery'],['Св. Богородица Перивлепта',41.1150,20.7926,'Охрид','church'],['Св. Константин и Елена',41.1164,20.7971,'Охрид','church'],['Св. Димитрија',41.1157,20.7954,'Охрид','church'],['Св. Никола Геракомија',41.1151,20.7945,'Охрид','church'],['Св. Ѓорѓи — Горна Порта',41.1158,20.7909,'Охрид','church'],['Св. Никола — Охрид',41.1170,20.8010,'Охрид','church'],['Св. Никола — Враништа',41.1748,20.6550,'Струга','church'],['Св. Богородица — Враништа',41.1762,20.6538,'Струга','church'],['Св. Ѓорѓи — Струга',41.1782,20.6770,'Струга','church'],['Св. Никола — Вевчани',41.2394,20.5932,'Вевчани','church'],['Св. Спас — Вевчани',41.2408,20.5948,'Вевчани','church'],['Св. Ѓорѓи — Вевчани',41.2398,20.5971,'Вевчани','church'],['Св. Петка — Велестово',41.0808,20.7998,'Охрид','church'],['Св. Богородица — Велгошти',41.1130,20.8310,'Охрид','church'],['Св. Илија — Елшани',41.0345,20.7825,'Охрид','church'],['Св. Никола — Пештани',41.0214,20.8066,'Охрид','church'],['Св. Богородица — Пештани',41.0200,20.8084,'Охрид','church'],['Св. Ѓорѓи — Лескоец',41.1140,20.8450,'Охрид','church'],['Св. Преображение — Крушево',41.3685,21.2480,'Крушево','church'],['Св. Никола — Крушево',41.3680,21.2470,'Крушево','church'],['Св. Богородица — Крушево',41.3689,21.2460,'Крушево','church'],['Св. Ѓорѓи — Крушево',41.3698,21.2467,'Крушево','church'],['Св. Архангел Михаил — Варош',41.3444,21.5487,'Прилеп','church'],['Св. Димитрија — Прилеп',41.3434,21.5523,'Прилеп','church'],['Св. Благовештение — Прилеп',41.3454,21.5511,'Прилеп','church'],['Св. Кирил и Методиј — Прилеп',41.3458,21.5537,'Прилеп','church'],['Св. Петка — Прилеп',41.3465,21.5498,'Прилеп','church'],['Св. Никола — Прилеп',41.3472,21.5520,'Прилеп','church'],['Св. Архангел Михаил — Варошки манастир',41.3441,21.5478,'Прилеп','monastery'],['Св. Никола — Манастир',41.4500,21.5300,'Прилеп','monastery'],['Св. Димитрија — Селце',41.3670,21.5550,'Прилеп','church'],['Св. Никола — Кичево',41.5124,20.9581,'Кичево','church'],['Св. Петар и Павле — Кичево',41.5108,20.9568,'Кичево','church'],['Св. Богородица — Кичево',41.5132,20.9574,'Кичево','church'],['Св. Ѓорѓи — Кичево',41.5140,20.9600,'Кичево','church'],['Св. Петка — Кичево',41.5088,20.9612,'Кичево','church'],['Пречиста Кичевска',41.5196,20.9734,'Кичево','monastery'],['Св. Богородица — Пречиста',41.5196,20.9734,'Кичево','monastery'],['Св. Никола — Демир Хисар',41.2205,21.2030,'Демир Хисар','church'],['Св. Илија — Демир Хисар',41.2215,21.2050,'Демир Хисар','church'],['Св. Димитрија — Демир Хисар',41.2220,21.2070,'Демир Хисар','church'],['Св. Јован Крстител — Слепче',41.2475,21.1605,'Демир Хисар','monastery'],['Слепченски манастир',41.2475,21.1605,'Демир Хисар','monastery'],['Св. Ѓорѓи — Курбиново',41.0258,21.0105,'Преспа','church'],['Св. Богородица — Љубојно',40.9350,21.1400,'Преспа','church'],['Св. Ѓорѓи — Љубојно',40.9358,21.1414,'Преспа','church'],['Св. Никола — Брајчино',40.9008,21.1374,'Преспа','church'],['Св. Богородица — Брајчино',40.9000,21.1390,'Преспа','church'],['Св. Ѓорѓи — Струмица',41.4378,22.6427,'Струмица','church'],['Св. Кирил и Методиј — Струмица',41.4385,22.6408,'Струмица','church'],['Св. Дванаесет Апостоли — Струмица',41.4392,22.6450,'Струмица','church'],['Св. Петнаесет Тивериополски Свештеномаченици',41.4389,22.6434,'Струмица','church'],['Св. Леонтиј — Водоча',41.4214,22.6201,'Струмица','monastery'],['Св. Богородица Елеуса — Велјуса',41.4027,22.5716,'Струмица','monastery'],['Водочки манастир',41.4214,22.6201,'Струмица','monastery'],['Вељушки манастир',41.4027,22.5716,'Струмица','monastery'],['Св. Илија — Радовиш',41.6380,22.4640,'Радовиш','church'],['Св. Троица — Радовиш',41.6390,22.4660,'Радовиш','church'],['Св. Спас — Радовиш',41.6400,22.4670,'Радовиш','church'],['Св. Архангел Михаил — Берово',41.7074,22.8547,'Берово','church'],['Св. Богородица — Берово',41.7062,22.8560,'Берово','church'],['Св. Ѓорѓи — Берово',41.7080,22.8575,'Берово','church'],['Св. Пантелејмон — Берово',41.7055,22.8535,'Берово','church'],['Св. Архангел Михаил — Беровско Езеро',41.6960,22.8020,'Берово','church'],['Св. Никола — Штип',41.7372,22.1936,'Штип','church'],['Св. Архангел Михаил — Штип',41.7381,22.1948,'Штип','church'],['Св. Богородица — Штип',41.7364,22.1924,'Штип','church'],['Св. Никола — Ново Село',41.7305,22.1975,'Штип','church'],['Св. Никола — Кочани',41.9168,22.4127,'Кочани','church'],['Св. Ѓорѓи — Кочани',41.9180,22.4140,'Кочани','church'],['Св. Богородица — Кочани',41.9172,22.4108,'Кочани','church'],['Св. Никола — Виница',41.8820,22.5090,'Виница','church'],['Св. Архангел Михаил — Виница',41.8830,22.5105,'Виница','church'],['Св. Ѓорѓи — Виница',41.8810,22.5110,'Виница','church'],['Св. Ѓорѓи — Кратово',42.0780,22.1810,'Кратово','church'],['Св. Никола — Кратово',42.0790,22.1800,'Кратово','church'],['Св. Јован Крстител — Кратово',42.0800,22.1820,'Кратово','church'],['Св. Никола — Куманово',42.1320,21.7240,'Куманово','church'],['Св. Троица — Куманово',42.1330,21.7260,'Куманово','church'],['Св. Ѓорѓи — Куманово',42.1310,21.7270,'Куманово','church'],['Св. Петка — Куманово',42.1340,21.7230,'Куманово','church'],['Карпински манастир',42.1890,21.8060,'Куманово','monastery'],['Св. Богородица — Карпино',42.1890,21.8060,'Куманово','monastery'],['Св. Никола — Старо Нагоричане',42.1555,22.2121,'Куманово','church'],['Св. Ѓорѓи — Старо Нагоричане',42.1555,22.2121,'Куманово','church'],['Св. Пантелејмон — Скопје',41.9770,21.3740,'Скопје','monastery'],['Св. Климент Охридски — Скопје',42.0025,21.4257,'Скопје','church'],['Св. Димитрија — Скопје',42.0008,21.4320,'Скопје','church'],['Св. Спас — Скопје',42.0003,21.4310,'Скопје','church'],['Св. Богородица — Скопје',42.0000,21.4330,'Скопје','church'],['Св. Никола — Љубанци',42.0940,21.4780,'Скопје','church'],['Св. Илија — Кучевиште',42.0710,21.4420,'Скопје','church'],['Св. Никола — Кучевиште',42.0720,21.4430,'Скопје','church'],['Св. Никола — Шишево',41.9670,21.2800,'Скопје','church'],['Св. Андреј — Матка',41.9630,21.2970,'Скопје','church'],['Успение на Пресвета Богородица — Матка',41.9618,21.2960,'Скопје','monastery'],['Св. Никола Шишевски — Матка',41.9518,21.3042,'Скопје','monastery'],['Св. Петка — Црниче',41.9800,21.4340,'Скопје','church'],['Св. Јован Крстител — Капиштец',41.9960,21.4100,'Скопје','church'],['Св. Троица — Скопје',42.0000,21.4200,'Скопје','church'],['Св. Ѓорѓи — Нерези',41.9770,21.3740,'Скопје','monastery'],['Св. Богородица — Водно',41.9850,21.4140,'Скопје','church'],['Св. Никола — Велес',41.7160,21.7730,'Велес','church'],['Св. Пантелејмон — Велес',41.7150,21.7750,'Велес','church'],['Св. Ѓорѓи — Велес',41.7170,21.7740,'Велес','church'],['Св. Спас — Велес',41.7165,21.7770,'Велес','church'],['Св. Богородица — Велес',41.7180,21.7700,'Велес','church'],['Св. Димитрија — Велес',41.7175,21.7720,'Велес','church'],['Св. Никола — Кавадарци',41.4330,22.0110,'Кавадарци','church'],['Св. Димитрија — Кавадарци',41.4340,22.0120,'Кавадарци','church'],['Св. Ѓорѓи — Кавадарци',41.4320,22.0100,'Кавадарци','church'],['Св. Ѓорѓи — Неготино',41.4830,22.0900,'Неготино','church'],['Св. Никола — Неготино',41.4840,22.0910,'Неготино','church'],['Св. Спас — Неготино',41.4820,22.0920,'Неготино','church'],['Св. Ѓорѓи — Валандово',41.3170,22.5610,'Валандово','church'],['Св. Димитрија — Валандово',41.3180,22.5620,'Валандово','church'],['Св. Никола — Валандово',41.3160,22.5600,'Валандово','church'],['Св. Спас — Гевгелија',41.1400,22.5000,'Гевгелија','church'],['Св. Кирил и Методиј — Гевгелија',41.1420,22.5010,'Гевгелија','church'],['Св. Петка — Гевгелија',41.1410,22.5030,'Гевгелија','church'],['Св. Ѓорѓи — Богданци',41.2030,22.5750,'Богданци','church'],['Св. Илија — Богданци',41.2040,22.5760,'Богданци','church'],['Св. Никола — Тетово',42.0100,20.9700,'Тетово','church'],['Св. Ѓорѓи — Тетово',42.0110,20.9720,'Тетово','church'],['Св. Богородица — Тетово',42.0090,20.9710,'Тетово','church'],['Св. Атанасиј — Лешок',42.0350,21.0300,'Тетово','church'],['Св. Богородица — Лешок',42.0340,21.0310,'Тетово','monastery'],['Лешочки манастир',42.0345,21.0305,'Тетово','monastery'],['Св. Јован Крстител — Бигорски',41.62194,20.61167,'Дебар','monastery'],['Св. Георги Победоносец — Рајчица',41.5240,20.5270,'Дебар','monastery'],['Рајчички манастир',41.5240,20.5270,'Дебар','monastery'],['Св. Никола — Дебар',41.5250,20.5275,'Дебар','church'],['Св. Богородица — Дебар',41.5260,20.5290,'Дебар','church'],['Св. Богородица — Калишта',41.1545,20.6230,'Струга','monastery'],['Калишки манастир',41.1545,20.6230,'Струга','monastery'],['Св. Ѓорѓи — Радожда',41.1430,20.6400,'Струга','church'],['Св. Богородица — Радожда',41.1420,20.6410,'Струга','church'],['Св. Никола — Охридско Поле',41.1450,20.8200,'Охрид','church'],['Св. Илија — Охридско Поле',41.1500,20.8250,'Охрид','church']];
+const all = churchesData.map((x,i)=>({id:'mk-'+i,name:x[0],lat:Number(x[1]),lon:Number(x[2]),region:x[3],type:x[4]}));
+let markers=[],userMarker=null,nearMode=false;
+const map=L.map('map',{zoomControl:true,preferCanvas:true}).setView([41.6086,21.7453],8);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
+const $=id=>document.getElementById(id);
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
+function mapsURL(x){return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(x.lat+','+x.lon);}
+function osmURL(x){return 'https://www.openstreetmap.org/?mlat='+x.lat+'&mlon='+x.lon+'#map=17/'+x.lat+'/'+x.lon;}
+function popup(x){return `<b>${esc(x.name)}</b><br>${x.type==='monastery'?'☦ Манастир':'✝ Црква'} • ${esc(x.region)}<br><code>${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</code><br><br><a target="_blank" rel="noopener" href="${mapsURL(x)}">📍 Google Maps</a> &nbsp; <a target="_blank" rel="noopener" href="${osmURL(x)}">🗺 OSM</a>`;}
+function filtered(){
+ const q=$('search').value.trim().toLowerCase(),ty=$('type').value,rg=$('region').value;
+ let rows=all.filter(x=>(!q||x.name.toLowerCase().includes(q)||x.region.toLowerCase().includes(q))&&(ty==='all'||x.type===ty)&&(rg==='all'||x.region===rg));
+ if(nearMode&&window._userPos)rows.sort((a,b)=>distance(window._userPos.lat,window._userPos.lon,a.lat,a.lon)-distance(window._userPos.lat,window._userPos.lon,b.lat,b.lon));
+ return rows;
+}
+function distance(a,b,c,d){const R=6371,rad=Math.PI/180,da=(c-a)*rad,db=(d-b)*rad;const q=Math.sin(da/2)**2+Math.cos(a*rad)*Math.cos(c*rad)*Math.sin(db/2)**2;return 2*R*Math.asin(Math.sqrt(q));}
+function render(){
+ const rows=filtered();markers.forEach(m=>map.removeLayer(m));markers=[];
+ rows.forEach(x=>{const mm=L.marker([x.lat,x.lon]).addTo(map).bindPopup(popup(x));mm._churchId=x.id;markers.push(mm);});
+ $('count').textContent=rows.length+' записи';
+ $('list').innerHTML=rows.map(x=>`<article class="card">
+ <div class="name">${esc(x.name)}</div><div class="meta">${x.type==='monastery'?'☦ Манастир':'✝ Црква'} • ${esc(x.region)}</div>
+ <div class="gps">${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</div><div class="cardActions">
+ <a target="_blank" rel="noopener" href="${mapsURL(x)}">📍 Google Maps</a>
+ <a target="_blank" rel="noopener" href="${osmURL(x)}">🗺 OSM</a><button onclick="openDetail('${x.id}')">ℹ️ Детали</button>
+ </div></article>`).join('')||'<div class="empty">Нема пронајдени резултати.</div>';
+}
+function focusLocation(x){map.setView([x.lat,x.lon],17,{animate:true});const mm=markers.find(z=>z._churchId===x.id);if(mm)setTimeout(()=>mm.openPopup(),200);$('status').textContent='Локација: '+x.name+' • '+x.lat.toFixed(6)+', '+x.lon.toFixed(6);}
+function openDetail(id){const x=all.find(y=>y.id===id);if(!x)return;window._detailX=x;$('detail').innerHTML=`<h2>${esc(x.name)}</h2><p><b>Тип:</b> ${x.type==='monastery'?'☦ Манастир':'✝ Црква'}<br><b>Место:</b> ${esc(x.region)}<br><b>GPS:</b> ${x.lat.toFixed(6)}, ${x.lon.toFixed(6)}</p><a target="_blank" rel="noopener" href="${mapsURL(x)}">📍 Отвори точна GPS локација во Google Maps</a><a target="_blank" rel="noopener" href="${osmURL(x)}">🗺 Отвори на OpenStreetMap</a><a href="#" onclick="copyGPS(${x.lat},${x.lon});return false">⧉ Копирај GPS</a><a href="#" onclick="focusLocation(window._detailX);closeDetail();return false">🗺 Покажи на карта</a>`;$('modal').classList.add('open');}
+function closeDetail(){$('modal').classList.remove('open');}
+function copyGPS(lat,lon){const t=lat.toFixed(6)+', '+lon.toFixed(6);if(navigator.clipboard)navigator.clipboard.writeText(t);$('status').textContent='GPS копирано: '+t;}
+function showAll(){nearMode=false;render();if(markers.length){const g=L.featureGroup(markers);map.fitBounds(g.getBounds().pad(0.08));}}
+function resetFilters(){nearMode=false;$('search').value='';$('type').value='all';$('region').value='all';showAll();$('status').textContent='Филтрите се ресетирани.';}
+function useMyLocation(){if(!navigator.geolocation){$('status').textContent='GPS не е достапен на овој уред.';return;}navigator.geolocation.getCurrentPosition(p=>{window._userPos={lat:p.coords.latitude,lon:p.coords.longitude};if(userMarker)map.removeLayer(userMarker);userMarker=L.marker([p.coords.latitude,p.coords.longitude]).addTo(map).bindPopup('📍 Моја локација');map.setView([p.coords.latitude,p.coords.longitude],12);$('status').textContent='Моја локација: '+p.coords.latitude.toFixed(6)+', '+p.coords.longitude.toFixed(6);},()=>$('status').textContent='Не можам да ја добијам локацијата. Провери дозвола за GPS.');}
+function nearest(){if(!window._userPos){useMyLocation();setTimeout(()=>{nearMode=true;render();},1200);return;}nearMode=true;render();$('status').textContent='Подредено од најблиските локации.';}
+function loadRegions(){[...new Set(all.map(x=>x.region))].sort((a,b)=>a.localeCompare(b,'mk')).forEach(r=>$('region').insertAdjacentHTML('beforeend',`<option value="${esc(r)}">${esc(r)}</option>`));}
+$('search').addEventListener('input',()=>{nearMode=false;render();});
+$('type').addEventListener('change',()=>{nearMode=false;render();});
+$('region').addEventListener('change',()=>{nearMode=false;render();});
+loadRegions();render();
+</script>
+</body>
+</html>
